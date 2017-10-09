@@ -66,9 +66,25 @@ Example Usage(s):
   module Main where
 
   import Hax
+
   import Options.Generic
 
-  data Example w = Example
+  import Data.Aeson
+  import Data.Text
+  import Text.Megaparsec
+  import Text.Mustache
+  import qualified Data.Text.Lazy.IO as TIO
+
+  import Data.List
+  import System.Posix.Types
+  import qualified System.Posix.Files as Files
+  import System.FilePath.Find
+  import System.Environment
+  import Control.Monad
+  import Data.Ord
+  import System.Time.Utils
+
+  data Opts w = Opts
       { help        :: w ::: Bool         <?> "show this help message and exit"
       , output      :: w ::: Maybe String <?> "output directory"
       , render      :: w ::: Bool         <?> "render to disk"
@@ -80,12 +96,58 @@ Example Usage(s):
       , generate    :: w ::: Maybe String <?> "generator source"
       } deriving (Generic)
 
-  instance ParseRecord (Example Wrapped)
-  deriving instance Show (Example Unwrapped)
+  instance ParseRecord (Opts Wrapped)
+  deriving instance Show (Opts Unwrapped)
+
+  data Evaluated = Evaluated {
+    path:: FilePath,
+    value:: EpochTime
+    }
+
+  instance Show Evaluated where
+    show e = (show (epochToClockTime (value e))) ++ " " ++ (show (path e))
+
+  instance Eq Evaluated where
+    e1 == e2 = (value e1) == (value e2)
+
+  instance Ord Evaluated where
+    e1 `compare` e2 = (value e1) `compare` (value e2)
+
+  type Metric = FileInfo -> EpochTime
+
+  metric :: Metric
+  metric = Files.modificationTime . infoStatus
+
+  folding :: Int -> Metric -> [Evaluated] -> FileInfo -> [Evaluated]
+  folding size metric previous info
+    | accept || best > evaluated = insert evaluated previous
+    | otherwise                  = previous
+    where best = Data.List.head previous
+          accept = Data.List.length previous < size
+          evaluated = Evaluated {
+            path=infoPath info,
+            value=metric info
+            }
+
+  notHidden :: FindClause Bool
+  notHidden = fileName /~? ".?*"
 
   main :: IO ()
   main = do
-      x <- unwrapRecord "Test program"
-      print (x :: Example Unwrapped)
+      x <- unwrapRecord "hax"
+      print (x :: Opts Unwrapped)
+      let root = template x
+      print (template x)
+      results <- fold notHidden (folding 10 metric) [] root
+      sequence $ Data.List.map print results
+      let res = compileMustacheText "test"
+            "[{{group}}]\nvalues:{{#values}}\n - {{.}}{{/values}}\n"
+      case res of
+        Left err -> putStrLn (parseErrorPretty err)
+        Right template -> TIO.putStr $ renderMustache template $ object
+          [ "group"   .= ("group1" :: Text)
+          , "values" .= ["value1" :: Text, "value2", "value3"]
+          ]
+      putStrLn "ok"
 
 -- *EOF*

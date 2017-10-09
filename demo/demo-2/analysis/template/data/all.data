@@ -1,0 +1,1 @@
+{{ "../../demo-out/demo-2/simulation" | consolidate_table( "dataset-(?:\\d+)/dataset-(?P<dataset>\\d+)-paramA_(?P<paramA>\\d+)-paramB_(?P<paramB>\\d+)-paramC_(?P<paramC>\\d+)-(?P<type>\\w+).csv", OrderedDict([ ("dataset","%d"), ("paramA","%d"), ("paramB","%d"), ("paramC", "%d"), ("type","%s") ]), ("\t", "\"") ) }}
