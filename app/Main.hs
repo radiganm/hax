@@ -76,6 +76,7 @@ Example Usage(s):
   import qualified Data.Text.Lazy.IO as TIO
 
   import Data.List
+
   import System.Posix.Types
   import qualified System.Posix.Files as Files
   import System.FilePath.Find
@@ -83,6 +84,9 @@ Example Usage(s):
   import Control.Monad
   import Data.Ord
   import System.Time.Utils
+
+  import Language.Haskell.Interpreter
+  import Control.Monad
 
   data Opts w = Opts
       { help        :: w ::: Bool         <?> "show this help message and exit"
@@ -132,22 +136,45 @@ Example Usage(s):
   notHidden :: FindClause Bool
   notHidden = fileName /~? ".?*"
 
+  testHint = do
+    setImportsQ [("Prelude", Nothing)]
+    let expr = "42"
+    a <- eval expr
+    say $ show a
+
+  errorString :: InterpreterError -> String
+  errorString (WontCompile es) = Data.List.intercalate "\n" (header : Data.List.map unbox es)
+    where
+      header = "ERROR: Won't compile:"
+      unbox (GhcError e) = e
+  errorString e = show e
+
+  say :: String -> Interpreter ()
+  say = liftIO . putStrLn
+
+  emptyLine :: Interpreter ()
+  emptyLine = say ""
+
   main :: IO ()
   main = do
-      x <- unwrapRecord "hax"
-      print (x :: Opts Unwrapped)
-      let root = template x
-      print (template x)
-      results <- fold notHidden (folding 10 metric) [] root
-      sequence $ Data.List.map print results
-      let res = compileMustacheText "test"
-            "[{{group}}]\nvalues:{{#values}}\n - {{.}}{{/values}}\n"
-      case res of
-        Left err -> putStrLn (parseErrorPretty err)
-        Right template -> TIO.putStr $ renderMustache template $ object
-          [ "group"   .= ("group1" :: Text)
-          , "values" .= ["value1" :: Text, "value2", "value3"]
-          ]
-      putStrLn "ok"
+    x <- unwrapRecord "hax"
+    print (x :: Opts Unwrapped)
+    let root = template x
+    print (template x)
+    results <- fold notHidden (folding 10 metric) [] root
+    sequence $ Data.List.map print results
+    let res = compileMustacheText "test"
+          "[{{group}}]\nvalues:{{#values}}\n - {{.}}{{/values}}\n"
+    case res of
+      Left err -> putStrLn (parseErrorPretty err)
+      Right template -> TIO.putStr $ renderMustache template $ object
+        [ "group"   .= ("group1" :: Text)
+        , "values" .= ["value1" :: Text, "value2", "value3"]
+        ]
+    r <- runInterpreter testHint
+    case r of
+      Left err -> putStrLn $ errorString err
+      Right () -> return ()
+    putStrLn "ok"
 
 -- *EOF*
